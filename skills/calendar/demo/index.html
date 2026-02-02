@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendar Skills 测试</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2em;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }
+        .card h2 {
+            color: #333;
+            margin-bottom: 16px;
+            font-size: 1.3em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 8px;
+        }
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            border: none;
+            background: #e0e0e0;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .tab.active {
+            background: #667eea;
+            color: white;
+        }
+        .tab:hover {
+            background: #764ba2;
+            color: white;
+        }
+        .event-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .event-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            transition: all 0.2s;
+        }
+        .event-item:hover {
+            background: #f8f9fa;
+            border-color: #667eea;
+        }
+        .event-info h3 {
+            color: #333;
+            font-size: 1em;
+            margin-bottom: 4px;
+        }
+        .event-info p {
+            color: #666;
+            font-size: 0.85em;
+        }
+        .event-info .location {
+            color: #888;
+            font-size: 0.8em;
+            margin-top: 2px;
+        }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #5a6fd6;
+        }
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        .btn-success:hover {
+            background: #218838;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            display: block;
+            color: #333;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+        .form-group input, .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+        .form-group input:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .form-row {
+            display: flex;
+            gap: 16px;
+        }
+        .form-row .form-group {
+            flex: 1;
+        }
+        .quick-add {
+            display: flex;
+            gap: 10px;
+        }
+        .quick-add input {
+            flex: 1;
+        }
+        .message {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            display: none;
+        }
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            display: block;
+        }
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            display: block;
+        }
+        .empty {
+            text-align: center;
+            color: #888;
+            padding: 40px;
+        }
+        .loading {
+            text-align: center;
+            color: #666;
+            padding: 20px;
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #667eea;
+            color: white;
+            border-radius: 10px;
+            font-size: 0.75em;
+            margin-left: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📅 Calendar Skills 测试</h1>
+
+        <!-- 快速添加 -->
+        <div class="card">
+            <h2>⚡ 快速添加（自然语言）</h2>
+            <div id="quickMessage" class="message"></div>
+            <div class="quick-add">
+                <input type="text" id="quickInput" placeholder="例如：明天下午3点开会、Lunch with John tomorrow at noon">
+                <button class="btn btn-primary" onclick="quickAdd()">添加</button>
+            </div>
+        </div>
+
+        <!-- 事件列表 -->
+        <div class="card">
+            <h2>📋 日历事件</h2>
+            <div class="tabs">
+                <button class="tab active" onclick="loadEvents('upcoming')">即将到来</button>
+                <button class="tab" onclick="loadEvents('today')">今天</button>
+                <button class="tab" onclick="loadEvents('week')">本周</button>
+            </div>
+            <div id="eventList" class="event-list">
+                <div class="loading">加载中...</div>
+            </div>
+        </div>
+
+        <!-- 创建事件 -->
+        <div class="card">
+            <h2>➕ 创建事件</h2>
+            <div id="createMessage" class="message"></div>
+            <form id="createForm" onsubmit="createEvent(event)">
+                <div class="form-group">
+                    <label>事件标题 *</label>
+                    <input type="text" id="eventTitle" required placeholder="输入事件标题">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>开始时间 *</label>
+                        <input type="datetime-local" id="eventStart" required>
+                    </div>
+                    <div class="form-group">
+                        <label>时长（分钟）</label>
+                        <input type="number" id="eventDuration" value="60" min="15" max="480">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>地点</label>
+                    <input type="text" id="eventLocation" placeholder="输入地点（可选）">
+                </div>
+                <div class="form-group">
+                    <label>描述</label>
+                    <textarea id="eventDescription" rows="2" placeholder="输入描述（可选）"></textarea>
+                </div>
+                <button type="submit" class="btn btn-success">创建事件</button>
+            </form>
+        </div>
+
+        <!-- 创建提醒 -->
+        <div class="card">
+            <h2>⏰ 创建提醒</h2>
+            <div id="remindMessage" class="message"></div>
+            <form id="remindForm" onsubmit="createReminder(event)">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>提醒内容 *</label>
+                        <input type="text" id="remindTitle" required placeholder="例如：给妈妈打电话">
+                    </div>
+                    <div class="form-group">
+                        <label>提醒时间 *</label>
+                        <input type="datetime-local" id="remindTime" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success">创建提醒</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // 页面加载时获取事件
+        document.addEventListener('DOMContentLoaded', () => {
+            loadEvents('upcoming');
+            // 设置默认时间为当前时间
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            document.getElementById('eventStart').value = now.toISOString().slice(0, 16);
+            document.getElementById('remindTime').value = now.toISOString().slice(0, 16);
+        });
+
+        // 加载事件列表
+        async function loadEvents(view) {
+            // 更新标签状态
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+
+            const listEl = document.getElementById('eventList');
+            listEl.innerHTML = '<div class="loading">加载中...</div>';
+
+            try {
+                const res = await fetch(`/api/events?view=${view}`);
+                const data = await res.json();
+
+                if (data.error) {
+                    listEl.innerHTML = `<div class="message error" style="display:block">${data.error}</div>`;
+                    return;
+                }
+
+                if (!data.events || data.events.length === 0) {
+                    listEl.innerHTML = '<div class="empty">暂无事件</div>';
+                    return;
+                }
+
+                listEl.innerHTML = data.events.map(e => `
+                    <div class="event-item">
+                        <div class="event-info">
+                            <h3>${e.summary || '无标题'}${e.summary?.startsWith('⏰') ? '<span class="badge">提醒</span>' : ''}</h3>
+                            <p>🕐 ${formatTime(e.start)} - ${formatTime(e.end)}</p>
+                            ${e.location ? `<p class="location">📍 ${e.location}</p>` : ''}
+                        </div>
+                        <button class="btn btn-danger" onclick="deleteEvent('${e.id}')">删除</button>
+                    </div>
+                `).join('');
+            } catch (err) {
+                listEl.innerHTML = `<div class="message error" style="display:block">加载失败: ${err.message}</div>`;
+            }
+        }
+
+        // 格式化时间
+        function formatTime(timeStr) {
+            if (!timeStr) return '';
+            const date = new Date(timeStr);
+            return date.toLocaleString('zh-CN', {
+                month: 'numeric',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // 快速添加
+        async function quickAdd() {
+            const input = document.getElementById('quickInput');
+            const msgEl = document.getElementById('quickMessage');
+            const text = input.value.trim();
+
+            if (!text) {
+                showMessage(msgEl, '请输入事件描述', 'error');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/events', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ quick: text })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    showMessage(msgEl, `✅ 已创建: ${data.event.summary}`, 'success');
+                    input.value = '';
+                    loadEvents('upcoming');
+                } else {
+                    showMessage(msgEl, `❌ ${data.error}`, 'error');
+                }
+            } catch (err) {
+                showMessage(msgEl, `❌ 创建失败: ${err.message}`, 'error');
+            }
+        }
+
+        // 创建事件
+        async function createEvent(e) {
+            e.preventDefault();
+            const msgEl = document.getElementById('createMessage');
+
+            const data = {
+                summary: document.getElementById('eventTitle').value,
+                start: document.getElementById('eventStart').value.replace('T', ' '),
+                duration: parseInt(document.getElementById('eventDuration').value),
+                location: document.getElementById('eventLocation').value,
+                description: document.getElementById('eventDescription').value
+            };
+
+            try {
+                const res = await fetch('/api/events', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await res.json();
+
+                if (result.success) {
+                    showMessage(msgEl, `✅ 事件已创建: ${result.event.summary}`, 'success');
+                    document.getElementById('createForm').reset();
+                    loadEvents('upcoming');
+                } else {
+                    showMessage(msgEl, `❌ ${result.error}`, 'error');
+                }
+            } catch (err) {
+                showMessage(msgEl, `❌ 创建失败: ${err.message}`, 'error');
+            }
+        }
+
+        // 创建提醒
+        async function createReminder(e) {
+            e.preventDefault();
+            const msgEl = document.getElementById('remindMessage');
+
+            const data = {
+                title: document.getElementById('remindTitle').value,
+                time: document.getElementById('remindTime').value.replace('T', ' ')
+            };
+
+            try {
+                const res = await fetch('/api/remind', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await res.json();
+
+                if (result.success) {
+                    showMessage(msgEl, `✅ 提醒已创建: ${result.event.summary}`, 'success');
+                    document.getElementById('remindForm').reset();
+                    loadEvents('upcoming');
+                } else {
+                    showMessage(msgEl, `❌ ${result.error}`, 'error');
+                }
+            } catch (err) {
+                showMessage(msgEl, `❌ 创建失败: ${err.message}`, 'error');
+            }
+        }
+
+        // 删除事件
+        async function deleteEvent(eventId) {
+            if (!confirm('确定要删除这个事件吗？')) return;
+
+            try {
+                const res = await fetch(`/api/events/${eventId}`, {
+                    method: 'DELETE'
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    loadEvents('upcoming');
+                } else {
+                    alert('删除失败: ' + data.error);
+                }
+            } catch (err) {
+                alert('删除失败: ' + err.message);
+            }
+        }
+
+        // 显示消息
+        function showMessage(el, msg, type) {
+            el.textContent = msg;
+            el.className = `message ${type}`;
+            setTimeout(() => {
+                el.className = 'message';
+            }, 5000);
+        }
+
+        // 回车快速添加
+        document.getElementById('quickInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') quickAdd();
+        });
+    </script>
+</body>
+</html>

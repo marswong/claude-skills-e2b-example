@@ -1,0 +1,25 @@
+{
+  "name": "ability-agent-skills",
+  "version": "1.0.0",
+  "description": "A curated marketplace of practical Claude Skills to develop apps on Ability",
+  "plugins": [
+    {
+      "name": "chatgpt-core",
+      "description": "OpenAI GPT API integration for single/multi-turn conversations, image analysis, and code generation. Supports GPT-5.2, GPT-4o and other models. Use when user needs AI chat, image recognition, or code generation via OpenAI.",
+      "source": "./chatgpt-core",
+      "strict": false
+    },
+    {
+      "name": "frontend-design",
+      "description": "Create distinctive, production-grade frontend interfaces with high design quality.",
+      "source": "./frontend-design",
+      "strict": false
+    },
+    {
+      "name": "news-aggregation",
+      "description": "Aggregate news from RSS sources.",
+      "source": "./news-aggregation",
+      "strict": false
+    }
+  ]
+}
