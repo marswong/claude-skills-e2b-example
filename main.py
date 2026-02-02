@@ -29,13 +29,22 @@ def execute_code_in_sandbox(sandbox: Sandbox, code: str) -> str:
         Output from the code execution
     """
     try:
-        # Escape the code properly for shell execution
-        escaped_code = code.replace("'", "'\"'\"'")
-        result = sandbox.commands.run(f"python3 -c '{escaped_code}'")
+        # Write code to a temporary file to avoid shell escaping issues
+        temp_file = "/tmp/code_to_execute.py"
+        sandbox.files.write(temp_file, code)
+        
+        # Execute the Python file
+        result = sandbox.commands.run(f"python3 {temp_file}")
+        
+        # Clean up the temporary file
+        try:
+            sandbox.files.remove(temp_file)
+        except:
+            pass  # Ignore cleanup errors
         
         # Return stdout output, or stderr if there's an error
         if result.exit_code != 0:
-            return f"Error: {result.stderr if result.stderr else 'Command failed'}"
+            return f"Error (exit code {result.exit_code}): {result.stderr if result.stderr else 'Command failed'}"
         
         return result.stdout if result.stdout else "(No output)"
     except Exception as e:
