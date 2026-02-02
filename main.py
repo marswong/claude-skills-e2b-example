@@ -66,8 +66,7 @@ def main():
         
         try:
             # Example Python code to execute
-            code = """
-numbers = list(range(1, 11))
+            code = """numbers = list(range(1, 11))
 total = sum(numbers)
 print(f"Numbers: {numbers}")
 print(f"Sum: {total}")
