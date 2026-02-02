@@ -1,0 +1,14 @@
+[project]
+name = "claude-skills-e2b-example"
+version = "0.1.0"
+description = "A simple example of running Claude Code with agent skills in E2B sandbox"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "e2b>=1.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
