@@ -1,4 +1,4 @@
-# E2B Sandbox Example
+# claude-skills-e2b-example
 
 A simple example of running code in E2B sandbox.
 
@@ -56,7 +56,3 @@ The example will:
 1. **Sandbox Creation**: Creates an isolated E2B sandbox environment
 2. **Code Execution**: Runs Python code in the E2B sandbox
 3. **Result Processing**: Displays execution results
-
-## License
-
-MIT
