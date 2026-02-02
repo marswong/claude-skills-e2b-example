@@ -3,10 +3,10 @@ name = "claude-skills-e2b-example"
 version = "0.1.0"
 description = "A simple example of running Claude Code with agent skills in E2B sandbox"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
     "anthropic>=0.40.0",
-    "e2b-code-interpreter>=1.0.0",
+    "e2b>=1.0.0",
     "python-dotenv>=1.0.0",
 ]
 

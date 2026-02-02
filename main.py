@@ -10,7 +10,7 @@ This example demonstrates:
 
 import os
 from anthropic import Anthropic
-from e2b_code_interpreter import Sandbox
+from e2b import Sandbox
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -29,13 +29,15 @@ def execute_code_in_sandbox(sandbox: Sandbox, code: str) -> str:
         Output from the code execution
     """
     try:
-        execution = sandbox.run_code(code)
+        # Escape the code properly for shell execution
+        escaped_code = code.replace("'", "'\"'\"'")
+        result = sandbox.commands.run(f"python3 -c '{escaped_code}'")
         
-        # Return text output, or error if available
-        if execution.error:
-            return f"Error: {execution.error}"
+        # Return stdout output, or stderr if there's an error
+        if result.exit_code != 0:
+            return f"Error: {result.stderr if result.stderr else 'Command failed'}"
         
-        return execution.text if execution.text else "(No output)"
+        return result.stdout if result.stdout else "(No output)"
     except Exception as e:
         return f"Error executing code: {str(e)}"
 
