@@ -9,36 +9,33 @@ This example demonstrates:
 """
 
 import os
-from typing import Optional
 from anthropic import Anthropic
-from e2b import Sandbox
+from e2b_code_interpreter import Sandbox
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
 
-def execute_code_in_sandbox(sandbox: Sandbox, code: str, language: str = "python") -> str:
+def execute_code_in_sandbox(sandbox: Sandbox, code: str) -> str:
     """
-    Execute code in the E2B sandbox.
+    Execute Python code in the E2B sandbox.
     
     Args:
         sandbox: E2B sandbox instance
-        code: Code to execute
-        language: Programming language (default: python)
+        code: Python code to execute
     
     Returns:
         Output from the code execution
     """
     try:
-        if language == "python":
-            result = sandbox.run_code(code)
-            return result.stdout if result.stdout else result.stderr
-        elif language == "bash":
-            result = sandbox.process.start_and_wait(code)
-            return result.stdout if result.stdout else result.stderr
-        else:
-            return f"Unsupported language: {language}"
+        execution = sandbox.run_code(code)
+        
+        # Return text output, or error if available
+        if execution.error:
+            return f"Error: {execution.error}"
+        
+        return execution.text if execution.text else "(No output)"
     except Exception as e:
         return f"Error executing code: {str(e)}"
 
@@ -56,8 +53,8 @@ def run_claude_with_e2b_skills():
     
     # Create E2B sandbox
     print("Creating E2B sandbox...")
-    sandbox = Sandbox(template="base")
-    print(f"Sandbox created: {sandbox.id}")
+    sandbox = Sandbox()
+    print(f"Sandbox created successfully")
     
     try:
         # Example conversation with Claude
@@ -102,11 +99,18 @@ def run_claude_with_e2b_skills():
         
         # Extract and execute code (simplified - in production, use proper parsing)
         # Looking for Python code blocks in Claude's response
-        if "```python" in assistant_message:
-            code_start = assistant_message.find("```python") + 9
-            code_end = assistant_message.find("```", code_start)
-            if code_end != -1:
-                code = assistant_message[code_start:code_end].strip()
+        code_markers = ["```python", "```Python", "```py"]
+        code = None
+        
+        for marker in code_markers:
+            if marker in assistant_message:
+                code_start = assistant_message.find(marker) + len(marker)
+                code_end = assistant_message.find("```", code_start)
+                if code_end != -1:
+                    code = assistant_message[code_start:code_end].strip()
+                    break
+        
+        if code:
                 
                 print("\nExecuting code in E2B sandbox:")
                 print("-" * 60)
@@ -138,12 +142,15 @@ def run_claude_with_e2b_skills():
                 print("\nClaude's Interpretation:")
                 print(interpretation)
                 print("=" * 60)
+        else:
+            print("\nNo Python code block found in Claude's response.")
+            print("=" * 60)
         
         print("\n✅ Example completed successfully!")
         
     finally:
         # Clean up sandbox
-        print(f"\nClosing sandbox {sandbox.id}...")
+        print(f"\nClosing sandbox...")
         sandbox.close()
         print("Sandbox closed.")
 

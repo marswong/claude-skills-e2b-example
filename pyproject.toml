@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
     "anthropic>=0.40.0",
-    "e2b>=1.0.0",
+    "e2b-code-interpreter>=1.0.0",
     "python-dotenv>=1.0.0",
 ]
 
