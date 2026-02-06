@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import json
 from json.decoder import JSONDecodeError
 import os
@@ -15,16 +16,44 @@ from e2b import Sandbox, CommandHandle
 
 load_dotenv()
 
-prompt = sys.argv[1]
+# Parse command line arguments
+parser = argparse.ArgumentParser(
+    description="Generate web applications using Claude AI",
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    epilog="""
+Examples:
+  python main.py "build a cafe website"
+  python main.py "build a todo app" --max-retries 2
+  python main.py "recipe sharing platform" --max-retries 0  # Disable auto-retry
+"""
+)
+parser.add_argument("prompt", help="Natural language description of the app to build")
+parser.add_argument(
+    "--max-retries",
+    type=int,
+    default=1,
+    help="Maximum number of automatic retries if implementation is incomplete (default: 1, set to 0 to disable)"
+)
+args = parser.parse_args()
+
+prompt = args.prompt
+max_retries = args.max_retries
 
 app_id = uuid.uuid4()
 print(f"app_id: {str(app_id)}")
+print(f"max_retries: {max_retries}")
 
 
 JSON_BLOCK_PATTERN = re.compile(r"^```json.*?```$", re.DOTALL)
 
 developer_system_prompt = """
 You are a Senior Full-Stack Developer and expert in ReactJS, Next.js 16, SQLite, JavaScript, HTML, CSS, and modern UI/UX frameworks (TailwindCSS 3, shadcn/ui, Radix).
+
+## CRITICAL REQUIREMENTS
+1. You MUST fully implement all requested features - DO NOT just create plans or documentation
+2. You MUST write actual code files for all components, pages, API routes, and database schemas
+3. You MUST mark each feature as "completed" in TodoWrite ONLY after writing the actual implementation code
+4. DO NOT end the session until ALL features are fully implemented with working code
 
 ## Instructions
 1. The project scaffolding has been set up at `/home/user/app`, please continue to iterate based on it
@@ -104,22 +133,40 @@ When working with Next.js 16, openai SDK, TailwindCSS 3 or other rapidly evolvin
 """
 
 pm_system_prompt = """
-You are an Orchestrator, your task is transition from natural language prompt to App Feature Schema.
+You are an Orchestrator. Your ONLY task is to convert natural language prompts into a simple JSON feature schema.
+
+## CRITICAL RULES - FOLLOW EXACTLY
+1. Your ENTIRE response MUST be ONLY a JSON code block wrapped in ```json markers
+2. DO NOT use any tools (Task, Write, Bash, Read, etc.)
+3. DO NOT create plan documents or files
+4. DO NOT add any text before or after the JSON block
+5. DO NOT ask questions or add explanations
+6. DO NOT enter detailed planning mode - just list features
+
+## Your Response Format (EXACTLY THIS)
+```json
+{
+    "project": "Project Name",
+    "estimated_build_time": "X minutes",
+    "features": [
+        {
+            "label": "Feature Name",
+            "description": "Brief description",
+            "selected": true
+        }
+    ]
+}
+```
 
 ## Constraints
-1. NO QUESTIONS: Never reply with a question mark. If information is missing, use industry-standard defaults for personal utility apps.
-2. NO BLOAT: Exclude any mention of Auth, Login, Registration, Landing Pages, or FAQs.
-3. AUTONOMY: You are smarter and more experienced than the user. Make executive decisions on behalf of the user.
+1. Select 3-5 must-have features (set selected: true)
+2. Include 2-3 nice-to-have features (set selected: false)
+3. Exclude Auth, Login, Registration, Landing Pages, FAQs
+4. Use industry-standard defaults for missing information
+5. Estimate ~1 minute build time per selected feature
 
-## Thinking Process
-Before outputting, mentally calculate:
-- What are the 3-5 must-have features for this project? (Auto-select these).
-- What are 2 nice-to-have features? (Leave these unselected).
-- Estimated build time based on feature complexity (Approximately 1 minute per feature).
-
-## Example
-User:
-build a cafe website
+## Example 1
+User: build a cafe website
 Assistant:
 ```json
 {
@@ -154,60 +201,50 @@ Assistant:
     ]
 }
 ```
-User:
-suggest more features
+
+## Example 2
+User: recipe sharing platform with user accounts and search
 Assistant:
 ```json
 {
-    "project": "Artisan Brew Cafe",
-    "estimated_build_time": "8 minutes",
+    "project": "Recipe Sharing Platform",
+    "estimated_build_time": "7 minutes",
     "features": [
         {
-            "label": "Hero Banner",
-            "description": "Warm cafe interior with latte art",
+            "label": "User Profiles",
+            "description": "User accounts with profile pages",
             "selected": true
         },
         {
-            "label": "About Section",
-            "description": "Barista story & craft",
+            "label": "Recipe CRUD",
+            "description": "Create, edit, delete recipes with images",
             "selected": true
         },
         {
-            "label": "Menu Grid",
-            "description": "Espresso, Latte, Pastries, Toast",
+            "label": "Recipe Search",
+            "description": "Search by ingredient, cuisine, time",
             "selected": true
         },
         {
-            "label": "Gallery",
-            "description": "6 lifestyle cafe moments",
+            "label": "Recipe Discovery",
+            "description": "Browse trending and recent recipes",
+            "selected": true
+        },
+        {
+            "label": "Ratings & Reviews",
+            "description": "Rate and review recipes",
             "selected": false
         },
         {
-            "label": "Testimonials",
-            "description": "3 customer reviews with avatars",
-            "selected": false
-        },
-        {
-            "label": "Location Map",
-            "description": "Interactive map with cafe location",
-            "selected": false
-        },
-        {
-            "label": "Contact Form",
-            "description": "Simple form for inquiries",
-            "selected": false
-        },
-        {
-            "label": "Blog Section",
-            "description": "Articles on coffee culture",
+            "label": "Favorites",
+            "description": "Save favorite recipes",
             "selected": false
         }
     ]
 }
 ```
 
-## Output Format
-Return ONLY a structured JSON block. No prose.
+REMEMBER: Your response must be ONLY the JSON block. Nothing else.
 """
 
 
@@ -221,6 +258,40 @@ class ChatEvent(TypedDict):
 
 def is_json_block(text: str) -> bool:
     return JSON_BLOCK_PATTERN.match(text) is not None
+
+
+def extract_json_from_text(text: str) -> Optional[dict]:
+    """
+    Extract JSON from text that may contain markdown code blocks.
+    Handles both pure JSON blocks and JSON embedded in conversational text.
+    """
+    # Strategy 1: Try to find ```json ... ``` block within text
+    json_block_match = re.search(r'```json\s*\n(.*?)\n```', text, re.DOTALL)
+    if json_block_match:
+        try:
+            json_str = json_block_match.group(1).strip()
+            return json.loads(json_str)
+        except Exception:
+            pass
+    
+    # Strategy 2: Check if entire text is a JSON block (backwards compatibility)
+    if is_json_block(text):
+        try:
+            json_str = text.removeprefix("```json").removesuffix("```").strip()
+            return json.loads(json_str)
+        except Exception:
+            pass
+    
+    # Strategy 3: Try to find JSON object without markdown wrapper
+    # Look for {...} pattern that might be a plan
+    json_object_match = re.search(r'\{[\s\S]*"features"[\s\S]*\}', text)
+    if json_object_match:
+        try:
+            return json.loads(json_object_match.group(0))
+        except Exception:
+            pass
+    
+    return None
 
 
 def make_chat_event(obj: dict[Any, Any]) -> Optional[ChatEvent]:
@@ -253,15 +324,11 @@ def make_chat_event(obj: dict[Any, Any]) -> Optional[ChatEvent]:
         for block in obj["message"]["content"]:
             if block.get("type") == "text":
                 text = block.get("text")
-                if text and is_json_block(text):
-                    try:
-                        data = json.loads(
-                            text.removeprefix("```json").removesuffix("```")
-                        )
-                        return {"event": "plan", "data": data}
-                    except Exception as e:
-                        print("❌ Error: ", e)
-                        return {"event": "error", "data": "Unexpected planning error"}
+                
+                # Try to extract JSON plan from text (handles both pure JSON and embedded JSON)
+                plan_data = extract_json_from_text(text)
+                if plan_data and "features" in plan_data:
+                    return {"event": "plan", "data": plan_data}
 
                 return {"event": "message", "data": text}
             elif block.get("type") == "tool_use":
@@ -322,8 +389,13 @@ def chat(
     cmd = (
         "claude --output-format stream-json --verbose --model claude-opus-4-5-20251101"
     )
+    # For testing with lower costs, you can use:
+    # - claude-3-5-sonnet-20241022 (~5x cheaper, good quality)
+    # - claude-3-5-haiku-20241022 (~20x cheaper, set MAX_THINKING_TOKENS="0")
+    
     if mode == "plan":
-        cmd += f" --permission-mode plan --system-prompt '{pm_system_prompt}'"
+        # Restrict to plan mode with NO tools allowed - just return JSON
+        cmd += f" --permission-mode plan --allowed-tools '' --system-prompt '{pm_system_prompt}'"
     else:
         cmd += f" --allowed-tools 'Bash Edit Read Write Glob Grep TodoWrite BashOutput SlashCommand WebFetch WebSearch' --system-prompt '{developer_system_prompt}'"
 
@@ -367,26 +439,149 @@ def main():
     for x in chat_event_stream(handle=handle):
         event = json.loads(x)
         if event["event"] == "error":
-            print(f"❌ Error: {x}")
+            print(f"❌ Error in planning phase: {x}")
             sys.exit(1)
         print(x)
         if event["event"] == "plan":
             plan = event["data"]
+    
+    # Validate plan
+    if not plan:
+        print("❌ ERROR: No plan was generated!")
+        print("   The AI failed to create a feature plan from your prompt.")
+        sys.exit(1)
+    
+    if "features" not in plan:
+        print("❌ ERROR: Invalid plan structure - missing 'features' field!")
+        print(f"   Plan received: {plan}")
+        sys.exit(1)
+    
+    selected_features = [f for f in plan["features"] if f.get("selected")]
+    if len(selected_features) == 0:
+        print("❌ ERROR: No features were selected in the plan!")
+        print("   Cannot proceed with implementation.")
+        sys.exit(1)
+    
+    print(f"\n✓ Plan validated: {len(selected_features)} features selected for implementation\n")
 
-    if plan and "features" in plan:
-        features = ", ".join(
-            [feature["label"] for feature in plan["features"] if feature["selected"]]
-        )
-        plan_prompt = f"selected features: {features}"
-        print("plan prompt: {}", plan_prompt)
-        print("claude running - coding")
-        handle = chat(sbx=sbx, prompt=plan_prompt)
+    # Extract feature names for implementation prompt
+    features = ", ".join(
+        [feature["label"] for feature in plan["features"] if feature["selected"]]
+    )
+    
+    # Implementation with automatic retry logic
+    retry_count = 0
+    implementation_successful = False
+    
+    while retry_count <= max_retries and not implementation_successful:
+        if retry_count == 0:
+            # First attempt
+            implementation_prompt = f"""IMPLEMENT these selected features with complete, working code: {features}
+
+REQUIREMENTS:
+- Write all necessary code files (components, pages, API routes, database schemas)
+- Create actual implementations, NOT just plans or TODOs
+- Test that features work by running build commands
+- Use TodoWrite to mark each feature as "completed" ONLY after implementing the code
+- Do NOT end the session until all features are fully implemented
+
+Begin implementation now."""
+            print("plan prompt: {}", implementation_prompt)
+            print("claude running - coding")
+        else:
+            # Retry attempt
+            implementation_prompt = f"""Continue implementing ALL remaining features with complete, working code.
+
+CRITICAL: You stopped too early in the previous attempt. You MUST:
+1. Write actual code files (components, pages, API routes, database schemas)
+2. Do NOT just create plans, documentation, or architecture files
+3. Mark each feature as "completed" in TodoWrite ONLY after writing the implementation code
+4. Continue until ALL features ({features}) are fully implemented with working code
+
+Resume implementation now. Do not stop until all features are complete."""
+            print(f"\n⚠️  RETRY ATTEMPT {retry_count}/{max_retries}")
+            print("claude running - retry implementation")
+        
+        # Track implementation progress
+        completed_todos = []
+        total_turns = 0
+        total_cost = 0
+        
+        handle = chat(sbx=sbx, prompt=implementation_prompt)
         for x in chat_event_stream(handle=handle):
             event = json.loads(x)
             if event["event"] == "error":
                 print(f"❌ Error: {x}")
                 sys.exit(1)
+            elif event["event"] == "progress":
+                # Track completed features via TodoWrite
+                todos = event["data"]
+                completed_todos = [t for t in todos if t.get("status") == "completed"]
+                print(f"✓ Progress: {len(completed_todos)} features completed")
+            elif event["event"] == "end":
+                # Capture final stats
+                total_turns = event["data"].get("num_turns", 0)
+                total_cost = event["data"].get("total_cost_usd", 0)
             print(x)
+        
+        # Verify implementation completed
+        print("\n" + "="*60)
+        print("IMPLEMENTATION VERIFICATION")
+        print("="*60)
+        print(f"Attempt: {retry_count + 1}/{max_retries + 1}")
+        print(f"Total turns: {total_turns}")
+        print(f"Total cost: ${total_cost:.4f}")
+        print(f"Completed features: {len(completed_todos)}")
+        
+        # Display warnings for incomplete implementation
+        if total_turns < 10:
+            print("⚠️  WARNING: Very few turns detected - implementation may be incomplete!")
+            print("   Expected: 15-30+ turns for full implementation")
+            print("   Actual: {} turns".format(total_turns))
+        
+        if total_cost < 0.20:
+            print("⚠️  WARNING: Very low cost - implementation may be incomplete!")
+            print("   Expected: $0.50-2.00 for full implementation")
+            print("   Actual: ${:.4f}".format(total_cost))
+        
+        if len(completed_todos) == 0:
+            print("❌ ERROR: No completed features detected!")
+            print("   The AI may have only created a plan without implementing code.")
+        else:
+            print(f"✓ {len(completed_todos)} features marked as completed")
+        
+        # Determine if we should retry
+        should_retry = (
+            total_turns < 10 and
+            len(completed_todos) == 0 and
+            total_cost < 0.20
+        )
+        
+        if should_retry and retry_count < max_retries:
+            print("\n🔄 Implementation appears incomplete. Retrying automatically...")
+            retry_count += 1
+        elif should_retry and retry_count >= max_retries:
+            print(f"\n⚠️  Maximum retries ({max_retries}) reached.")
+            print("   Implementation may be incomplete.")
+            print("   The preview will show what was generated (may be just the template).")
+            
+            # Prompt user to continue manually
+            try:
+                print("\nWould you like to retry manually? (y/N): ", end="", flush=True)
+                response = input().strip().lower()
+                if response == 'y' or response == 'yes':
+                    retry_count += 1
+                    max_retries += 1  # Allow one more retry
+                    continue
+            except KeyboardInterrupt:
+                print("\nStopping...")
+            
+            implementation_successful = True  # Exit loop
+        else:
+            # Implementation looks good or no retry needed
+            implementation_successful = True
+        
+        print("="*60 + "\n")
 
     cwd = "/home/user/app"
     try:
