@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import json
 from json.decoder import JSONDecodeError
 import os
@@ -15,10 +16,32 @@ from e2b import Sandbox, CommandHandle
 
 load_dotenv()
 
-prompt = sys.argv[1]
+# Parse command line arguments
+parser = argparse.ArgumentParser(
+    description="Generate web applications using Claude AI",
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    epilog="""
+Examples:
+  python main.py "build a cafe website"
+  python main.py "build a todo app" --max-retries 2
+  python main.py "recipe sharing platform" --max-retries 0  # Disable auto-retry
+"""
+)
+parser.add_argument("prompt", help="Natural language description of the app to build")
+parser.add_argument(
+    "--max-retries",
+    type=int,
+    default=1,
+    help="Maximum number of automatic retries if implementation is incomplete (default: 1, set to 0 to disable)"
+)
+args = parser.parse_args()
+
+prompt = args.prompt
+max_retries = args.max_retries
 
 app_id = uuid.uuid4()
 print(f"app_id: {str(app_id)}")
+print(f"max_retries: {max_retries}")
 
 
 JSON_BLOCK_PATTERN = re.compile(r"^```json.*?```$", re.DOTALL)
@@ -441,11 +464,19 @@ def main():
     
     print(f"\n✓ Plan validated: {len(selected_features)} features selected for implementation\n")
 
-    if plan and "features" in plan:
-        features = ", ".join(
-            [feature["label"] for feature in plan["features"] if feature["selected"]]
-        )
-        plan_prompt = f"""IMPLEMENT these selected features with complete, working code: {features}
+    # Extract feature names for implementation prompt
+    features = ", ".join(
+        [feature["label"] for feature in plan["features"] if feature["selected"]]
+    )
+    
+    # Implementation with automatic retry logic
+    retry_count = 0
+    implementation_successful = False
+    
+    while retry_count <= max_retries and not implementation_successful:
+        if retry_count == 0:
+            # First attempt
+            implementation_prompt = f"""IMPLEMENT these selected features with complete, working code: {features}
 
 REQUIREMENTS:
 - Write all necessary code files (components, pages, API routes, database schemas)
@@ -455,15 +486,28 @@ REQUIREMENTS:
 - Do NOT end the session until all features are fully implemented
 
 Begin implementation now."""
-        print("plan prompt: {}", plan_prompt)
-        print("claude running - coding")
+            print("plan prompt: {}", implementation_prompt)
+            print("claude running - coding")
+        else:
+            # Retry attempt
+            implementation_prompt = f"""Continue implementing ALL remaining features with complete, working code.
+
+CRITICAL: You stopped too early in the previous attempt. You MUST:
+1. Write actual code files (components, pages, API routes, database schemas)
+2. Do NOT just create plans, documentation, or architecture files
+3. Mark each feature as "completed" in TodoWrite ONLY after writing the implementation code
+4. Continue until ALL features ({features}) are fully implemented with working code
+
+Resume implementation now. Do not stop until all features are complete."""
+            print(f"\n⚠️  RETRY ATTEMPT {retry_count}/{max_retries}")
+            print("claude running - retry implementation")
         
         # Track implementation progress
         completed_todos = []
         total_turns = 0
         total_cost = 0
         
-        handle = chat(sbx=sbx, prompt=plan_prompt)
+        handle = chat(sbx=sbx, prompt=implementation_prompt)
         for x in chat_event_stream(handle=handle):
             event = json.loads(x)
             if event["event"] == "error":
@@ -484,10 +528,12 @@ Begin implementation now."""
         print("\n" + "="*60)
         print("IMPLEMENTATION VERIFICATION")
         print("="*60)
+        print(f"Attempt: {retry_count + 1}/{max_retries + 1}")
         print(f"Total turns: {total_turns}")
         print(f"Total cost: ${total_cost:.4f}")
         print(f"Completed features: {len(completed_todos)}")
         
+        # Display warnings for incomplete implementation
         if total_turns < 10:
             print("⚠️  WARNING: Very few turns detected - implementation may be incomplete!")
             print("   Expected: 15-30+ turns for full implementation")
@@ -501,9 +547,39 @@ Begin implementation now."""
         if len(completed_todos) == 0:
             print("❌ ERROR: No completed features detected!")
             print("   The AI may have only created a plan without implementing code.")
-            print("   The preview will show the default template, not a working app.")
         else:
             print(f"✓ {len(completed_todos)} features marked as completed")
+        
+        # Determine if we should retry
+        should_retry = (
+            total_turns < 10 and
+            len(completed_todos) == 0 and
+            total_cost < 0.20
+        )
+        
+        if should_retry and retry_count < max_retries:
+            print("\n🔄 Implementation appears incomplete. Retrying automatically...")
+            retry_count += 1
+        elif should_retry and retry_count >= max_retries:
+            print(f"\n⚠️  Maximum retries ({max_retries}) reached.")
+            print("   Implementation may be incomplete.")
+            print("   The preview will show what was generated (may be just the template).")
+            
+            # Prompt user to continue manually
+            try:
+                print("\nWould you like to retry manually? (y/N): ", end="", flush=True)
+                response = input().strip().lower()
+                if response == 'y' or response == 'yes':
+                    retry_count += 1
+                    max_retries += 1  # Allow one more retry
+                    continue
+            except KeyboardInterrupt:
+                print("\nStopping...")
+            
+            implementation_successful = True  # Exit loop
+        else:
+            # Implementation looks good or no retry needed
+            implementation_successful = True
         
         print("="*60 + "\n")
 
